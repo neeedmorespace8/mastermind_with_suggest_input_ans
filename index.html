@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>邏輯猜燈謎 x Minimax AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-tap-highlight { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slideDown { animation: slideDown 0.2s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-slate-950 flex items-center justify-center h-[100dvh] overflow-hidden text-slate-800 font-sans">
+
+    <div class="w-full max-w-4xl h-full lg:h-[90dvh] flex flex-col lg:flex-row lg:rounded-3xl overflow-hidden lg:shadow-2xl lg:border border-slate-800 relative bg-slate-900">
+
+        <!-- 左半邊 / 上半邊：遊戲區 -->
+        <div class="w-full lg:w-1/2 h-[50%] lg:h-full bg-slate-100 flex flex-col relative z-10 shadow-2xl lg:shadow-none">
+            <!-- 標題列 -->
+            <div class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md shrink-0">
+                <h1 class="text-lg font-bold">實戰遊戲區 <span class="text-xs text-slate-400 font-normal ml-1">(4色5燈)</span></h1>
+                
+                <!-- 【修改點 1】新增自訂題目按鈕 -->
+                <div class="flex gap-2">
+                    <button onclick="openCustomModal()" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1 rounded transition">自訂題目</button>
+                    <button onclick="initSystem()" class="text-sm bg-slate-600 hover:bg-slate-500 px-3 py-1 rounded transition">隨機重啟</button>
+                </div>
+            </div>
+
+            <!-- 歷史紀錄區 -->
+            <div id="history-container" class="flex-1 overflow-y-auto p-4 no-scrollbar pb-32 lg:pb-36">
+                <div id="history" class="flex flex-col gap-3">
+                    <div class="text-center text-gray-400 mt-10 text-sm" id="empty-state">
+                        點擊下方燈泡切換顏色，或使用右側 AI 輔助！
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部輸入區 -->
+            <div class="absolute bottom-0 w-full bg-white border-t border-gray-200 p-4 pb-6 sm:pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                <div class="flex justify-between items-center mb-4 px-2 lg:px-8" id="input-row">
+                    <div onclick="cycleColor(0)" id="guess-0" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleColor(1)" id="guess-1" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleColor(2)" id="guess-2" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleColor(3)" id="guess-3" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleColor(4)" id="guess-4" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                </div>
+                <button onclick="submitGuess()" id="submit-btn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-2 rounded-xl shadow-md transition-transform transform active:scale-[0.98] text-lg">
+                    確認猜測
+                </button>
+            </div>
+
+            <!-- 過關覆蓋層 -->
+            <div id="win-screen" class="hidden absolute inset-0 bg-white/95 backdrop-blur-sm z-30 flex flex-col items-center justify-center">
+                <h2 class="text-4xl font-black text-green-600 mb-2">破關成功！</h2>
+                <p id="win-stats" class="text-lg text-gray-700 mb-6"></p>
+                <button onclick="initSystem()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transition">再來一局</button>
+            </div>
+
+            <!-- 【修改點 2】自訂題目覆蓋層 -->
+            <div id="custom-modal" class="hidden absolute inset-0 bg-white/95 backdrop-blur-sm z-40 flex flex-col items-center justify-center">
+                <h2 class="text-2xl font-black text-slate-800 mb-2">設定自訂題目</h2>
+                <p class="text-sm text-slate-500 mb-6">請點擊下方燈泡設定你心中的答案</p>
+                
+                <div class="flex justify-between items-center mb-8 px-4 gap-3">
+                    <div onclick="cycleCustomColor(0)" id="custom-0" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleCustomColor(1)" id="custom-1" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleCustomColor(2)" id="custom-2" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleCustomColor(3)" id="custom-3" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                    <div onclick="cycleCustomColor(4)" id="custom-4" class="no-tap-highlight w-12 h-12 rounded-full cursor-pointer shadow-inner border-4 border-gray-100 transition-colors duration-200"></div>
+                </div>
+                
+                <div class="flex gap-4">
+                    <button onclick="closeCustomModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-6 rounded-full shadow transition">取消</button>
+                    <button onclick="startWithCustomAnswer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-full shadow transition">確認並開始</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右半邊 / 下半邊：AI 演算法輔助區 -->
+        <div class="w-full lg:w-1/2 h-[50%] lg:h-full bg-slate-900 border-t-4 lg:border-t-0 lg:border-l border-slate-800 flex flex-col p-4 sm:p-6 lg:p-8 text-white overflow-y-auto">
+            <h2 class="text-xl font-bold mb-1 text-blue-400">Minimax 大腦輔助器</h2>
+            <p class="text-sm text-slate-400 mb-4 border-b border-slate-700 pb-4">
+                狀態：已連動數據。剩餘可能：<span id="pool-count" class="text-white font-bold text-lg bg-slate-800 px-2 py-1 rounded ml-1">1024</span> 種
+            </p>
+
+            <div class="flex-1 flex flex-col justify-center">
+                <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-inner">
+                    <button onclick="calculateMinimax()" id="calc-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-xl transition mb-4 shadow-lg active:scale-[0.98]">
+                        計算最佳猜測 (Minimax)
+                    </button>
+
+                    <div class="h-40 flex flex-col justify-center items-center w-full">
+                        <div id="recommendation-area" class="hidden animate-slideDown w-full">
+                            <p id="calc-status" class="text-xs text-center text-slate-300 mb-3"></p>
+                            <div class="flex justify-center space-x-2 mb-4" id="ai-suggestion">
+                                <!-- AI 推薦顏色會顯示在這裡 -->
+                            </div>
+                            <button onclick="applyAiSuggestion()" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-semibold py-2 rounded-lg transition border border-slate-500 active:scale-[0.98]">
+                                <span class="lg:hidden">↑</span><span class="hidden lg:inline">←</span> 將此組合套用至遊戲區
+                            </button>
+                        </div>
+                        
+                        <div id="ai-idle-state" class="text-center text-slate-500 text-sm w-full">
+                            點擊上方按鈕開始計算...
+                        </div>
+                    </div>                    
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 核心設定
+        const colors = ['bg-red-500', 'bg-yellow-400', 'bg-blue-500', 'bg-green-500'];
+        let secretAnswer = [];
+        let currentGuess = [0, 0, 0, 0, 0];
+        let attempts = 0;
+        let gameOver = false;
+
+        // 【修改點 3】自訂題目暫存變數
+        let tempCustomAnswer = [0, 0, 0, 0, 0];
+
+        // AI 設定
+        let allCombinations = [];
+        let possibleAnswers = [];
+        let aiRecommendedGuess = null;
+
+        function generateAll() {
+            let arr = [];
+            for(let a=0; a<4; a++) 
+                for(let b=0; b<4; b++) 
+                    for(let c=0; c<4; c++) 
+                        for(let d=0; d<4; d++) 
+                            for(let e=0; e<4; e++) 
+                                arr.push([a,b,c,d,e]);
+            return arr;
+        }
+
+        function getScore(guess, answer) {
+            let score = 0;
+            for(let i=0; i<5; i++) {
+                if(guess[i] === answer[i]) score++;
+            }
+            return score;
+        }
+
+        // 【修改點 4】讓 initSystem 接受外部指定的解答陣列
+        function initSystem(customAnswer = null) {
+            if (customAnswer) {
+                // 如果有傳入自訂答案，就使用自訂答案
+                secretAnswer = [...customAnswer];
+            } else {
+                // 否則維持原本的隨機產生
+                secretAnswer = Array.from({length: 5}, () => Math.floor(Math.random() * 4));
+            }
+            
+            currentGuess = [0, 0, 0, 0, 0];
+            attempts = 0;
+            gameOver = false;
+            
+            document.getElementById('history').innerHTML = `
+                <div class="text-center text-gray-400 mt-10 text-sm" id="empty-state">
+                    點擊下方燈泡切換顏色，或使用右側 AI 輔助！<br>
+                    <span class="text-indigo-400 mt-2 inline-block">${customAnswer ? '（目前為自訂題目模式）' : ''}</span>
+                </div>`;
+            document.getElementById('win-screen').classList.add('hidden');
+            document.getElementById('submit-btn').disabled = false;
+            document.getElementById('submit-btn').classList.remove('opacity-50');
+            updateInputUI();
+
+            allCombinations = generateAll();
+            possibleAnswers = [...allCombinations];
+            updateAiUI();
+            
+            document.getElementById('recommendation-area').classList.add('hidden');
+            document.getElementById('ai-idle-state').classList.remove('hidden');
+            document.getElementById('calc-btn').disabled = false;
+            document.getElementById('calc-btn').innerText = "計算最佳猜測 (Minimax)";
+        }
+
+        function cycleColor(index) {
+            if (gameOver) return;
+            currentGuess[index] = (currentGuess[index] + 1) % 4;
+            updateInputUI();
+        }
+
+        function updateInputUI() {
+            for(let i = 0; i < 5; i++) {
+                const el = document.getElementById(`guess-${i}`);
+                colors.forEach(c => el.classList.remove(c));
+                el.classList.add(colors[currentGuess[i]]);
+            }
+        }
+
+        // 【修改點 5】新增自訂題目的 UI 邏輯
+        function openCustomModal() {
+            tempCustomAnswer = [0, 0, 0, 0, 0]; // 預設全部紅色
+            updateCustomUI();
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        function closeCustomModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+        }
+
+        function cycleCustomColor(index) {
+            tempCustomAnswer[index] = (tempCustomAnswer[index] + 1) % 4;
+            updateCustomUI();
+        }
+
+        function updateCustomUI() {
+            for(let i = 0; i < 5; i++) {
+                const el = document.getElementById(`custom-${i}`);
+                colors.forEach(c => el.classList.remove(c));
+                el.classList.add(colors[tempCustomAnswer[i]]);
+            }
+        }
+
+        function startWithCustomAnswer() {
+            closeCustomModal();
+            initSystem(tempCustomAnswer); // 帶著設定好的答案重啟遊戲
+        }
+
+        // --- 猜測與 AI 邏輯以下保持原樣 ---
+
+        function submitGuess() {
+            if (gameOver) return;
+
+            const emptyState = document.getElementById('empty-state');
+            if(emptyState) emptyState.remove();
+
+            attempts++;
+            let correctCount = getScore(currentGuess, secretAnswer);
+
+            const historyDiv = document.getElementById('history');
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between p-3 bg-white rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.04)] border border-gray-100 animate-slideDown';
+            
+            const circlesDiv = document.createElement('div');
+            circlesDiv.className = 'flex space-x-1 sm:space-x-2';
+            for(let i = 0; i < 5; i++) {
+                const circle = document.createElement('div');
+                circle.className = `w-7 h-7 sm:w-8 sm:h-8 rounded-full shadow-inner border border-black/10 ${colors[currentGuess[i]]}`;
+                circlesDiv.appendChild(circle);
+            }
+
+            const scoreDiv = document.createElement('div');
+            scoreDiv.className = 'flex items-center space-x-3';
+            scoreDiv.innerHTML = `
+                <span class="text-xs text-gray-400 font-mono">#${attempts.toString().padStart(2, '0')}</span>
+                <span class="font-bold text-slate-700 text-lg sm:text-xl w-12 text-right">${correctCount} 對</span>
+            `;
+
+            row.appendChild(circlesDiv);
+            row.appendChild(scoreDiv);
+            historyDiv.prepend(row);
+
+            filterAiPool([...currentGuess], correctCount);
+
+            document.getElementById('recommendation-area').classList.add('hidden');
+            document.getElementById('ai-idle-state').classList.remove('hidden');
+
+            if(correctCount === 5) {
+                gameOver = true;
+                document.getElementById('submit-btn').disabled = true;
+                document.getElementById('submit-btn').classList.add('opacity-50');
+                document.getElementById('calc-btn').disabled = true;
+                
+                setTimeout(() => {
+                    document.getElementById('win-stats').innerText = `總共嘗試了 ${attempts} 次找出正確答案！`;
+                    document.getElementById('win-screen').classList.remove('hidden');
+                }, 300);
+            }
+        }
+
+        function filterAiPool(guessMade, scoreGot) {
+            possibleAnswers = possibleAnswers.filter(answer => {
+                return getScore(guessMade, answer) === scoreGot;
+            });
+            updateAiUI();
+        }
+
+        function updateAiUI() {
+            document.getElementById('pool-count').innerText = possibleAnswers.length;
+        }
+
+        function calculateMinimax() {
+            if(possibleAnswers.length === 0 || gameOver) return;
+
+            if(possibleAnswers.length === 1) {
+                aiRecommendedGuess = possibleAnswers[0];
+                showRecommendationUI(aiRecommendedGuess, "已鎖定唯一解答！");
+                return;
+            }
+
+            const btn = document.getElementById('calc-btn');
+            btn.innerText = "計算中...";
+            btn.disabled = true;
+            
+            setTimeout(() => {
+                let bestGuess = null;
+                let minWorstCaseSize = 9999;
+
+                for(let i=0; i<allCombinations.length; i++) {
+                    const testGuess = allCombinations[i];
+                    let scoreCounts = [0, 0, 0, 0, 0, 0];
+                    
+                    for(let j=0; j<possibleAnswers.length; j++) {
+                        const score = getScore(testGuess, possibleAnswers[j]);
+                        scoreCounts[score]++;
+                    }
+                    
+                    const worstCaseSize = Math.max(...scoreCounts);
+
+                    if(worstCaseSize < minWorstCaseSize) {
+                        minWorstCaseSize = worstCaseSize;
+                        bestGuess = testGuess;
+                    }
+                }
+
+                aiRecommendedGuess = bestGuess;
+                showRecommendationUI(bestGuess, `最糟情況下，剩下可能性會降至 ${minWorstCaseSize} 種`);
+                
+                btn.innerText = "重新計算最佳猜測";
+                btn.disabled = false;
+            }, 50);
+        }
+
+        function showRecommendationUI(guess, statusText) {
+            document.getElementById('ai-idle-state').classList.add('hidden');
+            const container = document.getElementById('ai-suggestion');
+            container.innerHTML = '';
+            
+            for(let i=0; i<5; i++) {
+                const circle = document.createElement('div');
+                circle.className = `w-10 h-10 rounded-full border-2 border-slate-600 shadow-inner ${colors[guess[i]]}`;
+                container.appendChild(circle);
+            }
+            
+            document.getElementById('calc-status').innerText = statusText;
+            document.getElementById('recommendation-area').classList.remove('hidden');
+        }
+
+        function applyAiSuggestion() {
+            if(aiRecommendedGuess && !gameOver) {
+                currentGuess = [...aiRecommendedGuess];
+                updateInputUI();
+            }
+        }
+
+        initSystem();
+    </script>
+</body>
+</html>
